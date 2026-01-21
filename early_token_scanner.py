@@ -149,53 +149,52 @@ class EliteTokenScanner:
         self.pumpfun_ws = PumpFunWebSocketMonitor(callback=self.on_new_token)
         self.seen_tokens: Set[str] = set()
         
-        # ELITE CRITERIA - Only potential winners
+        # MOMENTUM CRITERIA - Catch tokens that have proven some legitimacy
         self.criteria = {
-            # LIQUIDITY - Sweet spot for success
-            'min_pumpfun_liquidity': 30,      # $30+ SOL = serious launch
-            'max_pumpfun_liquidity': 150,     # <$150 SOL = not over-hyped
+            # LIQUIDITY - Looking for established launches
+            'min_pumpfun_liquidity': 20,      # $20+ SOL = decent support
+            'max_pumpfun_liquidity': 200,     # <$200 SOL = room to grow
             
-            # TIMING - Ultra fresh only
-            'max_token_age_seconds': 180,     # First 3 minutes only
+            # TIMING - Sweet spot after initial launch
+            'max_token_age_seconds': 600,     # First 10 minutes (safer zone)
             
             # SOCIAL PROOF - Must look legitimate
-            'require_socials': True,          # MUST have Twitter or Telegram
+            'require_socials': False,         # Nice to have but not required
             
             # NAME QUALITY
-            'max_symbol_length': 6,           # Short = memorable (DOGE, PEPE, WIF)
+            'max_symbol_length': 8,           # Slightly longer OK
             'min_symbol_length': 3,           # Not too short
             
-            # THEME REQUIREMENT - Must match proven narratives
+            # THEME REQUIREMENT - Broader themes
             'require_theme_match': True,
             'winning_themes': {
-                'dogs': ['dog', 'doge', 'shiba', 'wif', 'bonk', 'pup'],
-                'cats': ['cat', 'popcat', 'kitty'],
-                'memes': ['pepe', 'wojak', 'chad', 'gigachad', 'smug'],
-                'ai': ['ai', 'agent', 'gpt', 'chatgpt', 'claude'],
+                'dogs': ['dog', 'doge', 'shiba', 'wif', 'bonk', 'pup', 'inu', 'puppy'],
+                'cats': ['cat', 'popcat', 'kitty', 'meow', 'neko'],
+                'memes': ['pepe', 'wojak', 'chad', 'gigachad', 'smug', 'apu', 'bobo'],
+                'ai': ['ai', 'agent', 'gpt', 'chatgpt', 'claude', 'bot'],
+                'political': ['trump', 'maga', 'biden', 'america'],
+                'food': ['pizza', 'taco', 'burger', 'fries'],
             },
             
             # BLACKLIST - Auto-reject
             'blacklist_keywords': [
-                # Scam indicators
+                # Obvious scams
                 'test', 'scam', 'rug', 'honeypot',
                 # Hype words (usually fail)
                 'moon', 'gem', 'safe', '100x', '1000x', 
                 'lambo', 'rocket', 'millionaire', 'rich',
-                # Overused/tired
-                'elon', 'shib', 'floki', 'akita',
-                # Low effort
-                'coin', 'token', 'finance', 'swap', 'defi',
+                # Random/low effort
+                'random', 'asdf', 'qwerty', 'zzzz',
             ],
             
-            # QUALITY FILTERS
+            # QUALITY FILTERS - Less strict
             'banned_patterns': [
-                r'\d{3,}',          # No "DOGE420", "PEPE1000"
-                r'[x×]\d+',         # No "100x", "1000x"
-                r'\$',              # No dollar signs in name
+                r'\d{4,}',          # No "DOGE42069"
+                r'[x×]\d{2,}',      # No "100x", "1000x"
             ],
             
-            # PRIORITY THRESHOLD
-            'min_priority_score': 170,        # Only alert if score >= 170/200
+            # PRIORITY THRESHOLD - Lower for more alerts
+            'min_priority_score': 150,        # Only alert if score >= 150/200
         }
     
     async def start(self):
@@ -214,15 +213,15 @@ class EliteTokenScanner:
         
         logger.info("Elite Token Scanner started!")
         await self.send_message(
-            "🎯 <b>ELITE TOKEN SCANNER v3.0</b> 🎯\n\n"
+            "🎯 <b>MOMENTUM SCANNER v3.1</b> 🎯\n\n"
             "⚡ WebSocket: REAL-TIME alerts\n"
-            "🎯 Elite Filtering: WINNERS ONLY\n\n"
+            "📈 Strategy: Catch proven momentum\n\n"
             "<b>Criteria:</b>\n"
             f"💰 Liquidity: {self.criteria['min_pumpfun_liquidity']}-{self.criteria['max_pumpfun_liquidity']} SOL\n"
             f"⏱️ Age: First {self.criteria['max_token_age_seconds']//60} minutes\n"
-            f"🎪 Themes: Dogs, Cats, Memes, AI\n"
+            f"🎪 Themes: Dogs, Cats, Memes, AI, Political, Food\n"
             f"⭐ Min Priority: {self.criteria['min_priority_score']}/200\n\n"
-            "Expect 2-5 quality alerts per hour 📊"
+            "Sweet spot = Safer launches with room to grow 📊"
         )
     
     async def stop(self):
@@ -337,34 +336,35 @@ class EliteTokenScanner:
         return True, "✅ Elite check passed"
     
     def calculate_priority(self, token: EarlyToken) -> int:
-        """Calculate priority score (0-200)"""
+        """Calculate priority score (0-200) - Momentum focused"""
         score = 0
         
-        # 1. SPEED BONUS (max 50 points)
+        # 1. SWEET SPOT TIMING (max 50 points)
+        # Reward the 2-10 minute window (proven but early)
         age_seconds = (datetime.now() - token.timestamp).total_seconds()
-        if age_seconds < 60:        # First minute
+        if 120 <= age_seconds <= 300:    # 2-5 minutes (SWEET SPOT)
             score += 50
-        elif age_seconds < 120:     # Second minute
-            score += 40
-        elif age_seconds < 180:     # Third minute
-            score += 30
+        elif 60 <= age_seconds <= 600:   # 1-10 minutes (good)
+            score += 45
+        elif age_seconds < 120:          # Too early (risky)
+            score += 35
         else:
             score += 20
         
         # 2. LIQUIDITY SWEET SPOT (max 40 points)
         liq = token.initial_liquidity
-        if 40 <= liq <= 80:         # Perfect range
+        if 30 <= liq <= 100:         # Perfect range
             score += 40
-        elif 30 <= liq <= 100:      # Good range
+        elif 20 <= liq <= 150:       # Good range
             score += 35
-        elif 25 <= liq <= 120:      # Acceptable
+        elif liq >= 15:              # Acceptable
             score += 25
         else:
-            score += 15
+            score += 10
         
-        # 3. SOCIAL PROOF (max 35 points)
+        # 3. SOCIAL PROOF (max 30 points - less important)
         if token.twitter:
-            score += 20
+            score += 15
         if token.telegram:
             score += 15
         
@@ -372,12 +372,12 @@ class EliteTokenScanner:
         sym_len = len(token.symbol)
         if 3 <= sym_len <= 5:       # Perfect (DOGE, PEPE, WIF)
             score += 20
-        elif sym_len <= 6:
+        elif sym_len <= 7:
             score += 15
         else:
             score += 5
         
-        # 5. THEME MATCH (max 30 points)
+        # 5. THEME MATCH (max 35 points)
         name_lower = token.name.lower()
         symbol_lower = token.symbol.lower()
         
@@ -385,11 +385,11 @@ class EliteTokenScanner:
         for theme_name, keywords in themes.items():
             for keyword in keywords:
                 if keyword in name_lower or keyword in symbol_lower:
-                    # Hot themes get more points
-                    if theme_name in ['dogs', 'memes', 'ai']:
-                        score += 30
+                    # All hot themes
+                    if theme_name in ['dogs', 'memes', 'ai', 'political']:
+                        score += 35
                     else:
-                        score += 20
+                        score += 25
                     break
         
         # 6. CLEAN NAME BONUS (max 25 points)
