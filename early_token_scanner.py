@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Early Solana Token Scanner - WebSocket Version
-Real-time monitoring of Pump.fun launches via WebSocket
-Much more reliable than API polling
+Elite Solana Token Scanner - WebSocket Version with Advanced Filtering
+Only alerts on high-potential winners
+Real-time monitoring via WebSocket
 """
 
 import asyncio
 import aiohttp
 import logging
 import json
+import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
@@ -54,7 +55,7 @@ class PumpFunWebSocketMonitor:
     
     def __init__(self, callback):
         self.ws_url = "wss://pumpportal.fun/api/data"
-        self.callback = callback  # Function to call when new token found
+        self.callback = callback
         self.reconnect_delay = 5
         self.max_reconnect_delay = 60
         self.websocket = None
@@ -65,7 +66,7 @@ class PumpFunWebSocketMonitor:
         
         while True:
             try:
-                logger.info(f"Connecting to Pump.fun WebSocket at {self.ws_url}")
+                logger.info(f"Connecting to Pump.fun WebSocket...")
                 
                 async with websockets.connect(
                     self.ws_url,
@@ -82,7 +83,6 @@ class PumpFunWebSocketMonitor:
                     await websocket.send(json.dumps(subscribe_message))
                     logger.info("Subscribed to new token events")
                     
-                    # Reset reconnect delay on successful connection
                     current_delay = self.reconnect_delay
                     
                     # Listen for messages
@@ -91,7 +91,7 @@ class PumpFunWebSocketMonitor:
                             data = json.loads(message)
                             await self.handle_message(data)
                         except json.JSONDecodeError as e:
-                            logger.error(f"Failed to parse WebSocket message: {e}")
+                            logger.error(f"Failed to parse message: {e}")
                         except Exception as e:
                             logger.error(f"Error handling message: {e}")
                             
@@ -100,7 +100,6 @@ class PumpFunWebSocketMonitor:
             except Exception as e:
                 logger.error(f"Unexpected error: {e}")
             
-            # Reconnect with exponential backoff
             logger.info(f"Reconnecting in {current_delay} seconds...")
             await asyncio.sleep(current_delay)
             current_delay = min(current_delay * 2, self.max_reconnect_delay)
@@ -108,22 +107,17 @@ class PumpFunWebSocketMonitor:
     async def handle_message(self, data: Dict):
         """Process incoming WebSocket message"""
         try:
-            # Parse Pump.fun WebSocket message format
-            # Message structure may vary - adjust based on actual format
             if isinstance(data, dict):
-                # Check if this is a new token event
                 if data.get('txType') == 'create' or 'mint' in data:
                     token = self.parse_token_data(data)
                     if token:
                         await self.callback(token)
-                        
         except Exception as e:
             logger.error(f"Error in handle_message: {e}")
     
     def parse_token_data(self, data: Dict) -> Optional[EarlyToken]:
         """Parse token data from WebSocket message"""
         try:
-            # Adjust field names based on actual WebSocket message format
             return EarlyToken(
                 address=data.get('mint', ''),
                 name=data.get('name', 'Unknown'),
@@ -134,44 +128,17 @@ class PumpFunWebSocketMonitor:
                 timestamp=datetime.fromtimestamp(data.get('timestamp', 0) / 1000) if data.get('timestamp') else datetime.now(),
                 bonding_curve=data.get('bondingCurveKey'),
                 market_cap=float(data.get('marketCapSol', 0)),
+                twitter=data.get('twitter'),
+                telegram=data.get('telegram'),
+                website=data.get('website'),
             )
         except Exception as e:
-            logger.error(f"Error parsing token data: {e}")
+            logger.error(f"Error parsing token: {e}")
             return None
 
 
-class BirdeyeMonitor:
-    """Birdeye API as backup data source"""
-    
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key
-        self.base_url = "https://public-api.birdeye.so"
-        self.session: Optional[aiohttp.ClientSession] = None
-    
-    async def get_new_tokens(self) -> List[Dict]:
-        """Fetch newly created tokens from Birdeye"""
-        try:
-            headers = {'X-API-KEY': self.api_key} if self.api_key else {}
-            
-            url = f"{self.base_url}/defi/token_creation"
-            params = {
-                'sort_by': 'creation_time',
-                'sort_type': 'desc',
-                'offset': 0,
-                'limit': 50
-            }
-            
-            async with self.session.get(url, headers=headers, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get('data', {}).get('items', [])
-        except Exception as e:
-            logger.error(f"Error fetching from Birdeye: {e}")
-        return []
-
-
-class EarlyTokenScanner:
-    """Main scanner with WebSocket support"""
+class EliteTokenScanner:
+    """Elite scanner with strict filtering for winners only"""
     
     def __init__(self, telegram_token: str, chat_id: str):
         self.telegram_token = telegram_token
@@ -179,29 +146,65 @@ class EarlyTokenScanner:
         self.bot = Bot(token=telegram_token)
         self.session: Optional[aiohttp.ClientSession] = None
         
-        # Initialize monitors
         self.pumpfun_ws = PumpFunWebSocketMonitor(callback=self.on_new_token)
-        self.birdeye = BirdeyeMonitor()
-        
         self.seen_tokens: Set[str] = set()
         
-        # Criteria optimized for VERY early stage
+        # ELITE CRITERIA - Only potential winners
         self.criteria = {
-    'min_pumpfun_liquidity': 15,  # Good initial support
-    'max_token_age_minutes': 20,  # VERY fresh only
-    'require_socials': True,      # Must have socials
-    'min_holder_velocity': 30,    # Rapid adoption
-    'priority_keywords': ['doge', 'pepe', 'bonk'],  # Only proven themes
-    'blacklist_keywords': ['test', 'scam', 'rug', 'moon', 'safe', 'elon', 'floki', 'shib', 'inu'],
-}
+            # LIQUIDITY - Sweet spot for success
+            'min_pumpfun_liquidity': 30,      # $30+ SOL = serious launch
+            'max_pumpfun_liquidity': 150,     # <$150 SOL = not over-hyped
+            
+            # TIMING - Ultra fresh only
+            'max_token_age_seconds': 180,     # First 3 minutes only
+            
+            # SOCIAL PROOF - Must look legitimate
+            'require_socials': True,          # MUST have Twitter or Telegram
+            
+            # NAME QUALITY
+            'max_symbol_length': 6,           # Short = memorable (DOGE, PEPE, WIF)
+            'min_symbol_length': 3,           # Not too short
+            
+            # THEME REQUIREMENT - Must match proven narratives
+            'require_theme_match': True,
+            'winning_themes': {
+                'dogs': ['dog', 'doge', 'shiba', 'wif', 'bonk', 'pup'],
+                'cats': ['cat', 'popcat', 'kitty'],
+                'memes': ['pepe', 'wojak', 'chad', 'gigachad', 'smug'],
+                'ai': ['ai', 'agent', 'gpt', 'chatgpt', 'claude'],
+            },
+            
+            # BLACKLIST - Auto-reject
+            'blacklist_keywords': [
+                # Scam indicators
+                'test', 'scam', 'rug', 'honeypot',
+                # Hype words (usually fail)
+                'moon', 'gem', 'safe', '100x', '1000x', 
+                'lambo', 'rocket', 'millionaire', 'rich',
+                # Overused/tired
+                'elon', 'shib', 'floki', 'akita',
+                # Low effort
+                'coin', 'token', 'finance', 'swap', 'defi',
+            ],
+            
+            # QUALITY FILTERS
+            'banned_patterns': [
+                r'\d{3,}',          # No "DOGE420", "PEPE1000"
+                r'[x×]\d+',         # No "100x", "1000x"
+                r'\$',              # No dollar signs in name
+            ],
+            
+            # PRIORITY THRESHOLD
+            'min_priority_score': 170,        # Only alert if score >= 170/200
+        }
     
     async def start(self):
-        """Initialize all components"""
+        """Initialize scanner"""
         import ssl
         try:
             self.session = aiohttp.ClientSession()
         except Exception as e:
-            logger.warning(f"Using SSL bypass due to: {e}")
+            logger.warning(f"Using SSL bypass: {e}")
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
@@ -209,25 +212,26 @@ class EarlyTokenScanner:
                 connector=aiohttp.TCPConnector(ssl=ssl_context)
             )
         
-        self.birdeye.session = self.session
-        
-        logger.info("Early Token Scanner started!")
+        logger.info("Elite Token Scanner started!")
         await self.send_message(
-            "🚀 <b>EARLY TOKEN SCANNER v2.0 - WEBSOCKET MODE</b> 🚀\n\n"
-            "Monitoring:\n"
-            "• 🎪 Pump.fun WebSocket (REAL-TIME)\n"
-            "• 🦅 Birdeye API (backup)\n\n"
-            "⚡ WebSocket = Instant alerts within seconds of launch!\n"
-            f"Catching tokens within {self.criteria['max_token_age_minutes']} minutes of creation."
+            "🎯 <b>ELITE TOKEN SCANNER v3.0</b> 🎯\n\n"
+            "⚡ WebSocket: REAL-TIME alerts\n"
+            "🎯 Elite Filtering: WINNERS ONLY\n\n"
+            "<b>Criteria:</b>\n"
+            f"💰 Liquidity: {self.criteria['min_pumpfun_liquidity']}-{self.criteria['max_pumpfun_liquidity']} SOL\n"
+            f"⏱️ Age: First {self.criteria['max_token_age_seconds']//60} minutes\n"
+            f"🎪 Themes: Dogs, Cats, Memes, AI\n"
+            f"⭐ Min Priority: {self.criteria['min_priority_score']}/200\n\n"
+            "Expect 2-5 quality alerts per hour 📊"
         )
     
     async def stop(self):
-        """Clean up resources"""
+        """Clean up"""
         if self.session:
             await self.session.close()
     
     async def send_message(self, message: str, disable_preview: bool = False):
-        """Send alert to Telegram"""
+        """Send to Telegram"""
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
@@ -239,112 +243,189 @@ class EarlyTokenScanner:
             logger.error(f"Telegram error: {e}")
     
     async def on_new_token(self, token: EarlyToken):
-        """Callback when WebSocket detects new token"""
+        """Callback for new tokens"""
         try:
-            # Skip if already seen
             if token.address in self.seen_tokens:
                 return
             
-            # Check criteria
+            # Filter check
             passes, reason = self.meets_criteria(token)
             if not passes:
-                logger.debug(f"Token {token.symbol} filtered: {reason}")
+                logger.debug(f"❌ {token.symbol}: {reason}")
                 return
             
-            # Calculate priority
+            # Priority check
             priority = self.calculate_priority(token)
+            min_priority = self.criteria.get('min_priority_score', 0)
             
-            logger.info(f"🔥 Found early token via WebSocket: {token.symbol} (priority: {priority})")
+            if priority < min_priority:
+                logger.info(f"⚠️ {token.symbol}: Low priority ({priority}/{min_priority})")
+                return
+            
+            logger.info(f"🔥 WINNER: {token.symbol} (Priority: {priority}/200)")
             
             # Send alert
             message = self.format_alert(token, priority)
             await self.send_message(message, disable_preview=True)
             
-            # Mark as seen
             self.seen_tokens.add(token.address)
             
         except Exception as e:
             logger.error(f"Error in on_new_token: {e}")
     
     def meets_criteria(self, token: EarlyToken) -> tuple[bool, str]:
-        """Check if token meets criteria"""
-        # Age check
-        age_minutes = (datetime.now() - token.timestamp).total_seconds() / 60
-        if age_minutes > self.criteria['max_token_age_minutes']:
-            return False, f"Too old ({age_minutes:.1f} min)"
+        """Elite filtering - only winners pass"""
         
-        # Liquidity check
-        if token.source == 'pumpfun_websocket':
-            if token.initial_liquidity < self.criteria['min_pumpfun_liquidity']:
-                return False, f"Low liquidity ({token.initial_liquidity} SOL)"
+        # 1. Age check (seconds)
+        age_seconds = (datetime.now() - token.timestamp).total_seconds()
+        if age_seconds > self.criteria['max_token_age_seconds']:
+            return False, f"Too old ({age_seconds:.0f}s)"
         
-        # Blacklist check
+        # 2. Liquidity range
+        liq = token.initial_liquidity
+        if liq < self.criteria['min_pumpfun_liquidity']:
+            return False, f"Low liquidity ({liq:.1f} SOL)"
+        if liq > self.criteria['max_pumpfun_liquidity']:
+            return False, f"High liquidity ({liq:.1f} SOL)"
+        
+        # 3. Social requirement
+        if self.criteria.get('require_socials'):
+            if not token.twitter and not token.telegram:
+                return False, "No socials"
+        
+        # 4. Symbol length
+        sym_len = len(token.symbol)
+        if sym_len > self.criteria.get('max_symbol_length', 10):
+            return False, f"Symbol too long ({sym_len})"
+        if sym_len < self.criteria.get('min_symbol_length', 2):
+            return False, f"Symbol too short ({sym_len})"
+        
+        # 5. Blacklist check
         name_lower = token.name.lower()
         symbol_lower = token.symbol.lower()
+        
         for keyword in self.criteria['blacklist_keywords']:
             if keyword in name_lower or keyword in symbol_lower:
-                return False, f"Blacklisted keyword: {keyword}"
+                return False, f"Blacklisted: {keyword}"
         
-        return True, "Passed all checks"
+        # 6. Banned patterns
+        for pattern in self.criteria.get('banned_patterns', []):
+            if re.search(pattern, name_lower) or re.search(pattern, symbol_lower):
+                return False, f"Banned pattern"
+        
+        # 7. Theme requirement
+        if self.criteria.get('require_theme_match'):
+            has_theme = False
+            themes = self.criteria.get('winning_themes', {})
+            
+            for theme_name, keywords in themes.items():
+                for keyword in keywords:
+                    if keyword in name_lower or keyword in symbol_lower:
+                        has_theme = True
+                        break
+                if has_theme:
+                    break
+            
+            if not has_theme:
+                return False, "No theme match"
+        
+        # 8. Quality name (no excessive numbers)
+        digit_count = sum(c.isdigit() for c in token.symbol)
+        if digit_count > 1:
+            return False, "Too many numbers"
+        
+        return True, "✅ Elite check passed"
     
     def calculate_priority(self, token: EarlyToken) -> int:
-        """Calculate priority score"""
+        """Calculate priority score (0-200)"""
         score = 0
         
-        # Age bonus (newer = higher score)
-        age_minutes = (datetime.now() - token.timestamp).total_seconds() / 60
-        score += max(0, 100 - age_minutes * 2)
+        # 1. SPEED BONUS (max 50 points)
+        age_seconds = (datetime.now() - token.timestamp).total_seconds()
+        if age_seconds < 60:        # First minute
+            score += 50
+        elif age_seconds < 120:     # Second minute
+            score += 40
+        elif age_seconds < 180:     # Third minute
+            score += 30
+        else:
+            score += 20
         
-        # Liquidity bonus
-        score += min(50, token.initial_liquidity * 2)
+        # 2. LIQUIDITY SWEET SPOT (max 40 points)
+        liq = token.initial_liquidity
+        if 40 <= liq <= 80:         # Perfect range
+            score += 40
+        elif 30 <= liq <= 100:      # Good range
+            score += 35
+        elif 25 <= liq <= 120:      # Acceptable
+            score += 25
+        else:
+            score += 15
         
-        # Socials bonus
+        # 3. SOCIAL PROOF (max 35 points)
         if token.twitter:
             score += 20
         if token.telegram:
-            score += 20
-        if token.website:
-            score += 10
+            score += 15
         
-        # Keyword bonus
+        # 4. SYMBOL QUALITY (max 20 points)
+        sym_len = len(token.symbol)
+        if 3 <= sym_len <= 5:       # Perfect (DOGE, PEPE, WIF)
+            score += 20
+        elif sym_len <= 6:
+            score += 15
+        else:
+            score += 5
+        
+        # 5. THEME MATCH (max 30 points)
         name_lower = token.name.lower()
         symbol_lower = token.symbol.lower()
-        for keyword in self.criteria['priority_keywords']:
-            if keyword in name_lower or keyword in symbol_lower:
-                score += 30
-                break
         
-        return score
+        themes = self.criteria.get('winning_themes', {})
+        for theme_name, keywords in themes.items():
+            for keyword in keywords:
+                if keyword in name_lower or keyword in symbol_lower:
+                    # Hot themes get more points
+                    if theme_name in ['dogs', 'memes', 'ai']:
+                        score += 30
+                    else:
+                        score += 20
+                    break
+        
+        # 6. CLEAN NAME BONUS (max 25 points)
+        if token.symbol.isalpha():  # No numbers/special chars
+            score += 25
+        elif token.symbol.replace('$', '').isalnum():
+            score += 15
+        
+        return min(score, 200)
     
     def format_alert(self, token: EarlyToken, priority: int) -> str:
-        """Format alert message"""
-        age_minutes = (datetime.now() - token.timestamp).total_seconds() / 60
+        """Format elite alert"""
+        age_seconds = (datetime.now() - token.timestamp).total_seconds()
         
         # Priority emoji
-        if priority >= 150:
-            priority_emoji = "🔥🔥🔥"
-        elif priority >= 100:
-            priority_emoji = "🔥🔥"
+        if priority >= 180:
+            emoji = "🚨💎🚨"
+            label = "PREMIUM GEM"
+        elif priority >= 170:
+            emoji = "🔥🔥🔥"
+            label = "HOT LAUNCH"
         else:
-            priority_emoji = "🔥"
+            emoji = "🔥🔥"
+            label = "QUALITY LAUNCH"
         
         msg = (
-            f"{priority_emoji} <b>EARLY LAUNCH DETECTED</b> {priority_emoji}\n\n"
+            f"{emoji} <b>{label}</b> {emoji}\n\n"
             f"<b>{token.symbol}</b> - {token.name}\n"
-            f"📍 <code>{token.address}</code>\n"
-            f"🏷️ Source: WEBSOCKET (REAL-TIME)\n"
-            f"⏰ Age: {age_minutes:.1f} minutes\n"
-            f"⭐ Priority: {priority}/200\n\n"
+            f"📍 <code>{token.address}</code>\n\n"
+            f"⏱️ Age: {age_seconds:.0f} seconds\n"
+            f"💧 Liquidity: {token.initial_liquidity:.1f} SOL\n"
+            f"⭐ Priority: {priority}/200\n"
         )
         
-        if token.initial_liquidity > 0:
-            msg += f"💧 Initial Liquidity: {token.initial_liquidity:.2f} SOL\n"
-        
         if token.bonding_curve:
-            msg += f"📈 Bonding Curve: <code>{token.bonding_curve[:8]}...</code>\n"
-        
-        if token.market_cap > 0:
-            msg += f"💰 Market Cap: ${token.market_cap:,.0f}\n"
+            msg += f"📈 Curve: <code>{token.bonding_curve[:10]}...</code>\n"
         
         # Socials
         socials = []
@@ -353,57 +434,40 @@ class EarlyTokenScanner:
         if token.telegram:
             socials.append(f"<a href='{token.telegram}'>Telegram</a>")
         if token.website:
-            socials.append(f"<a href='{token.website}'>Website</a>")
+            socials.append(f"<a href='{token.website}'>Web</a>")
         
         if socials:
             msg += f"\n🔗 {' | '.join(socials)}\n"
         
-        # Trading links
+        # Trade links
         msg += (
-            f"\n📊 <b>Quick Links:</b>\n"
-            f"<a href='https://www.axiomtrade.app/swap?inputMint=So11111111111111111111111111111111111111112&outputMint={token.address}'>Axiom Trade</a> | "
+            f"\n📊 <b>TRADE NOW:</b>\n"
+            f"<a href='https://www.axiomtrade.app/swap?inputMint=So11111111111111111111111111111111111111112&outputMint={token.address}'>Axiom</a> | "
             f"<a href='https://pump.fun/{token.address}'>Pump.fun</a> | "
             f"<a href='https://birdeye.so/token/{token.address}?chain=solana'>Birdeye</a>\n\n"
-            f"⚡ <i>WEBSOCKET ALERT - ULTRA FRESH!</i>"
+            f"⚡ <i>Elite Scanner - {age_seconds:.0f}s old</i>"
         )
         
         return msg
     
-    async def birdeye_backup_scan(self):
-        """Backup scanning via Birdeye API"""
-        logger.info("Running backup Birdeye scan...")
-        
-        try:
-            tokens = await self.birdeye.get_new_tokens()
-            
-            for token_data in tokens:
-                # Parse and check token
-                # Similar to WebSocket handling
-                pass
-                
-        except Exception as e:
-            logger.error(f"Error in Birdeye backup scan: {e}")
-    
     async def run(self):
         """Main run loop"""
-        # Start WebSocket monitor
         websocket_task = asyncio.create_task(self.pumpfun_ws.connect_and_subscribe())
         
-        # Optionally run Birdeye backup scans every 5 minutes
-        async def backup_scanner():
+        # Cleanup old seen tokens every 10 minutes
+        async def cleanup_task():
             while True:
-                await asyncio.sleep(300)  # 5 minutes
-                await self.birdeye_backup_scan()
+                await asyncio.sleep(600)
+                if len(self.seen_tokens) > 500:
+                    logger.info("Cleaning seen tokens cache...")
+                    self.seen_tokens.clear()
         
-        backup_task = asyncio.create_task(backup_scanner())
-        
-        # Run both tasks
-        await asyncio.gather(websocket_task, backup_task)
+        cleanup = asyncio.create_task(cleanup_task())
+        await asyncio.gather(websocket_task, cleanup)
 
 
 async def main():
-    """Main entry point"""
-    # Configuration
+    """Entry point"""
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
     TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', 'YOUR_CHAT_ID_HERE')
     
@@ -415,7 +479,7 @@ async def main():
         print("❌ Please set TELEGRAM_CHAT_ID")
         return
     
-    scanner = EarlyTokenScanner(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+    scanner = EliteTokenScanner(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     
     try:
         await scanner.start()
