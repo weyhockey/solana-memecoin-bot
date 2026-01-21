@@ -187,14 +187,12 @@ class EarlyTokenScanner:
         
         # Criteria optimized for VERY early stage
         self.criteria = {
-    'min_pumpfun_liquidity': 12,      # $12+ SOL = serious launch
-    'max_token_age_minutes': 15,      # Fresh only
-    'require_socials': True,          # Must have Twitter or TG
-    'priority_keywords': ['doge', 'pepe', 'bonk', 'wojak', 'cat'],
-    'blacklist_keywords': [
-        'test', 'scam', 'rug', 'moon', 'gem', 
-        'safe', '100x', '1000x', 'elon', 'shib'
-    ],
+    'min_pumpfun_liquidity': 15,  # Good initial support
+    'max_token_age_minutes': 20,  # VERY fresh only
+    'require_socials': True,      # Must have socials
+    'min_holder_velocity': 30,    # Rapid adoption
+    'priority_keywords': ['doge', 'pepe', 'bonk'],  # Only proven themes
+    'blacklist_keywords': ['test', 'scam', 'rug', 'moon', 'safe', 'elon', 'floki', 'shib', 'inu'],
 }
     
     async def start(self):
