@@ -187,21 +187,15 @@ class EarlyTokenScanner:
         
         # Criteria optimized for VERY early stage
         self.criteria = {
-            # Pump.fun specific
-            'min_pumpfun_liquidity': 3,  # Min SOL in bonding curve
-            'max_token_age_minutes': 30,  # Only tokens < 30 min old
-            
-            # General filters
-            'require_socials': False,
-            'min_holder_velocity': 10,
-            
-            # Safety
-            'check_honeypot': True,
-            
-            # Keywords
-            'priority_keywords': ['doge', 'pepe', 'bonk', 'wojak', 'cat', 'dog'],
-            'blacklist_keywords': ['test', 'scam', 'rug'],
-        }
+    'min_pumpfun_liquidity': 12,      # $12+ SOL = serious launch
+    'max_token_age_minutes': 15,      # Fresh only
+    'require_socials': True,          # Must have Twitter or TG
+    'priority_keywords': ['doge', 'pepe', 'bonk', 'wojak', 'cat'],
+    'blacklist_keywords': [
+        'test', 'scam', 'rug', 'moon', 'gem', 
+        'safe', '100x', '1000x', 'elon', 'shib'
+    ],
+}
     
     async def start(self):
         """Initialize all components"""
